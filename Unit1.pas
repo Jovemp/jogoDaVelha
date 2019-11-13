@@ -1,0 +1,586 @@
+unit Unit1;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, System.Win.ScktComp;
+
+type
+  TPeca = (tpVazio, tpO, tpX);
+
+  TCasa = class
+  private
+    FPeca: TPeca;
+    FButton: TButton;
+    procedure SetPeca(const Value: TPeca);
+  public
+    property Peca: TPeca Read FPeca Write SetPeca;
+    property Button: TButton Read FButton Write FButton;
+  end;
+
+  TTabuleiro = record
+    Casas: array[0..3,0..3] of TCasa;
+  end;
+
+  TPosicao = record
+    X: Integer;
+    Y: Integer;
+  end;
+
+  TResultado = record
+    Ganhou: Boolean;
+    Peca: TPeca;
+  end;
+
+  TJogo = class
+    private
+      FTabuleiro: TTabuleiro;
+      function VerificarFinalJogo: TResultado;
+    public
+      constructor Create;
+      function Jogar(APeca: TPeca; APosicao: TPosicao): TResultado;
+      procedure NovoJogo;
+      procedure PreencherButtonTabuleiro(APosicao: TPosicao; AButton: TButton);
+  end;
+
+  TForm1 = class(TForm)
+    Button1: TButton;
+    Button2: TButton;
+    Button3: TButton;
+    Button4: TButton;
+    Button5: TButton;
+    Button6: TButton;
+    Button7: TButton;
+    Button8: TButton;
+    Button9: TButton;
+    Servidor: TServerSocket;
+    Cliente: TClientSocket;
+    Button10: TButton;
+    Edit1: TEdit;
+    Button11: TButton;
+    Label1: TLabel;
+    procedure Button10Click(Sender: TObject);
+    procedure Button11Click(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure Button4Click(Sender: TObject);
+    procedure Button5Click(Sender: TObject);
+    procedure Button6Click(Sender: TObject);
+    procedure Button7Click(Sender: TObject);
+    procedure Button8Click(Sender: TObject);
+    procedure Button9Click(Sender: TObject);
+    procedure ClienteRead(Sender: TObject; Socket: TCustomWinSocket);
+    procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure ServidorClientConnect(Sender: TObject; Socket: TCustomWinSocket);
+    procedure ServidorClientDisconnect(Sender: TObject; Socket: TCustomWinSocket);
+    procedure ServidorClientRead(Sender: TObject; Socket: TCustomWinSocket);
+  private
+    FPeca: TPeca;
+    FJogo: TJogo;
+    FMinhaPeca: TPeca;
+    FSocket: TCustomWinSocket;
+    procedure PrencherButtonTabuleiro;
+    procedure Jogar(APosicao: TPosicao; Sender: TObject);
+    procedure BloqueiaButtonJogo;
+    procedure DesbloqueiaButtonJogo;
+    procedure EnviarPosicao(APosicao: TPosicao);
+    procedure RecebendoPosicao(APosicao: TPosicao);
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.dfm}
+
+{ TJogo }
+
+constructor TJogo.Create;
+begin
+  NovoJogo;
+end;
+
+function TJogo.Jogar(APeca: TPeca; APosicao: TPosicao): TResultado;
+begin
+  if FTabuleiro.Casas[APosicao.X][APosicao.Y].Peca = tpVazio
+  then case APeca of
+         tpO:  FTabuleiro.Casas[APosicao.X][APosicao.Y].Peca:=  tpO;
+         tpX:  FTabuleiro.Casas[APosicao.X][APosicao.Y].Peca:=  tpX;
+       end
+  else begin
+    ShowMessage('Atenção! Escolha uma posição vazia.');
+  end;
+  Result:= VerificarFinalJogo;
+end;
+
+
+procedure TJogo.NovoJogo;
+var
+  i,j: Integer;
+begin
+  for i := 0 to 3 do
+  begin
+    for j := 0 to 3 do
+    begin
+      if (Assigned(FTabuleiro.Casas[i, j]))
+      then FTabuleiro.Casas[i, j].Free;
+    end;
+  end;
+  for i := 0 to 3 do
+  begin
+    for j := 0 to 3 do
+    begin
+      FTabuleiro.Casas[i, j]:= TCasa.Create;
+      FTabuleiro.Casas[i, j].Peca:= tpVazio;
+    end;
+  end;
+end;
+
+procedure TJogo.PreencherButtonTabuleiro(APosicao: TPosicao; AButton: TButton);
+begin
+  FTabuleiro.Casas[APosicao.X][APosicao.Y].Button:= AButton;
+end;
+
+function TJogo.VerificarFinalJogo: TResultado;
+var
+  p: Integer;
+  i: Integer;
+  vPeca: TPeca;
+  vEmpate: Boolean;
+begin
+  Result.Ganhou:= False;
+  for p := 1 to 2 do
+  begin
+    vPeca:= TPeca(p);
+    for I := 0 to 2 do
+    begin
+      if (FTabuleiro.Casas[i][0].Peca = vPeca) and
+         (FTabuleiro.Casas[i][1].Peca = vPeca) and
+         (FTabuleiro.Casas[i][2].Peca = vPeca)
+      then begin
+        Result.Ganhou:= True;
+        Result.Peca:= vPeca;
+        Exit;
+      end;
+      if (FTabuleiro.Casas[0][i].Peca = vPeca) and
+         (FTabuleiro.Casas[1][i].Peca = vPeca) and
+         (FTabuleiro.Casas[2][i].Peca = vPeca)
+      then begin
+        Result.Ganhou:= True;
+        Result.Peca:= vPeca;
+        Exit;
+      end;
+    end;
+
+    if (FTabuleiro.Casas[0][0].Peca = vPeca) and
+       (FTabuleiro.Casas[1][1].Peca = vPeca) and
+       (FTabuleiro.Casas[2][2].Peca = vPeca)
+    then begin
+      Result.Ganhou:= True;
+      Result.Peca:= vPeca;
+      Exit;
+    end;
+    if (FTabuleiro.Casas[0][2].Peca = vPeca) and
+       (FTabuleiro.Casas[1][1].Peca = vPeca) and
+       (FTabuleiro.Casas[2][0].Peca = vPeca)
+    then begin
+      Result.Ganhou:= True;
+      Result.Peca:= vPeca;
+      Exit;
+    end;
+  end;
+  vEmpate:= True;
+  for p := 0 to 2 do
+  begin
+    for I := 0 to 2 do
+    begin
+      if (FTabuleiro.Casas[p][i].Peca = tpVazio)
+      then begin
+        vEmpate:= false;
+        Exit;
+      end;
+    end;
+  end;
+  if vEmpate
+  then begin
+    Result.Ganhou:= True;
+    Result.Peca:= tpVazio;
+    Exit;
+  end;
+end;
+
+procedure TForm1.BloqueiaButtonJogo;
+var
+  i: Integer;
+begin
+  for I := 0 to Self.ComponentCount -1 do
+  begin
+    if (Self.Components[i] is TButton) and
+       ((Self.Components[i] as TButton).Tag = 10)
+    then (Self.Components[i] as TButton).Enabled:= False;
+  end;
+end;
+
+procedure TForm1.Button10Click(Sender: TObject);
+begin
+  if not Servidor.Active
+  then begin
+    Servidor.Active:= True;
+    Button10.Caption:= 'Desconect';
+    Edit1.Enabled:= False;
+    Button11.Enabled:= False;
+    BloqueiaButtonJogo;
+  end
+  else begin
+    Servidor.Active:= False;
+    Button10.Caption:= 'Servidor';
+    Edit1.Enabled:= True;
+    Button11.Enabled:= True;
+  end;
+
+end;
+
+procedure TForm1.Button11Click(Sender: TObject);
+begin
+  if not Cliente.Active
+  then begin
+    Cliente.Host:= Edit1.Text;
+    Cliente.Active:= True;
+    Button10.Enabled:= False;
+    Edit1.Enabled:= False;
+    Button11.Caption:= 'Desconect';
+    BloqueiaButtonJogo;
+    FSocket:= Cliente.Socket;
+  end
+  else begin
+    Cliente.Active:= False;
+    Button10.Enabled:= True;
+    Edit1.Enabled:= True;
+    Button11.Caption:= 'Conectar';
+    FSocket:= nil;
+  end;
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 0;
+  vPosicao.Y:= 0;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button2Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 0;
+  vPosicao.Y:= 1;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button3Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 0;
+  vPosicao.Y:= 2;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button4Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 1;
+  vPosicao.Y:= 0;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button5Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 1;
+  vPosicao.Y:= 1;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button6Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 1;
+  vPosicao.Y:= 2;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button7Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 2;
+  vPosicao.Y:= 0;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button8Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 2;
+  vPosicao.Y:= 1;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.Button9Click(Sender: TObject);
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 2;
+  vPosicao.Y:= 2;
+  FMinhaPeca:= FPeca;
+  Jogar(vPosicao, Sender);
+  EnviarPosicao(vPosicao);
+end;
+
+procedure TForm1.ClienteRead(Sender: TObject; Socket: TCustomWinSocket);
+var
+  vTexto, vSeparador: String;
+  vLista: TArray<String>;
+  vPosicao: TPosicao;
+begin
+  vTexto:= Socket.ReceiveText;
+  vSeparador:= ' ';
+  vLista:= vTexto.Split(vSeparador);
+  vPosicao.X:= StrToInt(Copy(vLista[0], 3,1));
+  vPosicao.Y:= StrToInt(Copy(vLista[1], 3,1));
+  RecebendoPosicao(vPosicao);
+end;
+
+procedure TForm1.DesbloqueiaButtonJogo;
+var
+  i: Integer;
+begin
+  for I := 0 to Self.ComponentCount -1 do
+  begin
+    if (Self.Components[i] is TButton) and
+       ((Self.Components[i] as TButton).Tag = 10)
+    then (Self.Components[i] as TButton).Enabled:= True;
+  end;
+end;
+
+procedure TForm1.EnviarPosicao(APosicao: TPosicao);
+begin
+  FSocket.SendText('X:'+IntToStr(APosicao.X)+' Y:'+IntToStr(APosicao.Y));
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+begin
+  FPeca:= tpO;
+  FJogo:= TJogo.Create;
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
+begin
+  PrencherButtonTabuleiro;
+  BloqueiaButtonJogo;
+end;
+
+procedure TForm1.Jogar(APosicao: TPosicao; Sender: TObject);
+var
+  vResultado: TResultado;
+  i: Integer;
+begin
+  BloqueiaButtonJogo;
+  vResultado:= FJogo.Jogar(FPeca, APosicao);
+  if vResultado.Ganhou
+  then begin
+    case vResultado.Peca of
+      tpX: begin
+             ShowMessage('O "X" ganhou.');
+             if FMinhaPeca = tpX
+             then DesbloqueiaButtonJogo;
+           end;
+      tpO: begin
+             ShowMessage('O "O" ganhou.');
+             if FMinhaPeca = tpO
+             then DesbloqueiaButtonJogo;
+           end;
+      tpVazio: begin
+             ShowMessage('Empate');
+             DesbloqueiaButtonJogo;
+           end;
+    end;
+    FJogo.NovoJogo;
+    PrencherButtonTabuleiro;
+    for I := 0 to Self.ComponentCount -1 do
+    begin
+      if (Self.Components[i] is TButton) and
+         ((Self.Components[i] as TButton).Tag = 10)
+      then (Self.Components[i] as TButton).Caption:= '';
+    end;
+  end
+  else begin
+     case FPeca of
+      tpX: begin
+             FPeca:= tpO;
+           end;
+      tpO: begin
+             FPeca:= tpX;
+           end;
+     end;
+  end;
+end;
+
+procedure TForm1.PrencherButtonTabuleiro;
+var
+  vPosicao: TPosicao;
+begin
+  vPosicao.X:= 0;
+  vPosicao.Y:= 0;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button1);
+  vPosicao.X:= 0;
+  vPosicao.Y:= 1;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button2);
+  vPosicao.X:= 0;
+  vPosicao.Y:= 2;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button3);
+  vPosicao.X:= 1;
+  vPosicao.Y:= 0;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button4);
+  vPosicao.X:= 1;
+  vPosicao.Y:= 1;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button5);
+  vPosicao.X:= 1;
+  vPosicao.Y:= 2;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button6);
+  vPosicao.X:= 2;
+  vPosicao.Y:= 0;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button7);
+  vPosicao.X:= 2;
+  vPosicao.Y:= 1;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button8);
+  vPosicao.X:= 2;
+  vPosicao.Y:= 2;
+  FJogo.PreencherButtonTabuleiro(vPosicao, Button9);
+end;
+
+procedure TForm1.RecebendoPosicao(APosicao: TPosicao);
+var
+  vResultado: TResultado;
+  i: Integer;
+begin
+  vResultado:= FJogo.Jogar(FPeca, APosicao);
+  if vResultado.Ganhou
+  then begin
+    case vResultado.Peca of
+      tpX: begin
+             ShowMessage('O "X" ganhou.');
+             if FMinhaPeca = tpX
+             then DesbloqueiaButtonJogo
+             else BloqueiaButtonJogo;
+           end;
+      tpO: begin
+             ShowMessage('O "O" ganhou.');
+             if FMinhaPeca = tpO
+             then DesbloqueiaButtonJogo
+             else BloqueiaButtonJogo;
+           end;
+      tpVazio: begin
+             ShowMessage('Empate');
+             BloqueiaButtonJogo;
+           end;
+    end;
+    FJogo.NovoJogo;
+    PrencherButtonTabuleiro;
+    for I := 0 to Self.ComponentCount -1 do
+    begin
+      if (Self.Components[i] is TButton) and
+         ((Self.Components[i] as TButton).Tag = 10)
+      then (Self.Components[i] as TButton).Caption:= '';
+    end;
+  end
+  else begin
+     case FPeca of
+      tpX: begin
+             FPeca:= tpO;
+           end;
+      tpO: begin
+             FPeca:= tpX;
+           end;
+     end;
+     DesbloqueiaButtonJogo;
+  end;
+end;
+
+procedure TForm1.ServidorClientConnect(Sender: TObject; Socket:
+    TCustomWinSocket);
+begin
+  DesbloqueiaButtonJogo;
+  FSocket:= Socket;
+end;
+
+procedure TForm1.ServidorClientDisconnect(Sender: TObject; Socket:
+    TCustomWinSocket);
+begin
+  BloqueiaButtonJogo;
+  FSocket:= nil;
+end;
+
+procedure TForm1.ServidorClientRead(Sender: TObject; Socket: TCustomWinSocket);
+var
+  vTexto, vSeparador: String;
+  vLista: TArray<String>;
+  vPosicao: TPosicao;
+begin
+  vTexto:= Socket.ReceiveText;
+  vSeparador:= ' ';
+  vLista:= vTexto.Split(vSeparador);
+  vPosicao.X:= StrToInt(Copy(vLista[0], 3,1));
+  vPosicao.Y:= StrToInt(Copy(vLista[1], 3,1));
+  RecebendoPosicao(vPosicao);
+end;
+
+{ TCasa }
+
+procedure TCasa.SetPeca(const Value: TPeca);
+begin
+  FPeca := Value;
+  case FPeca of
+    tpX: begin
+           FButton.Caption:= 'X';
+         end;
+    tpO: begin
+           FButton.Caption:= 'O';
+         end;
+    tpVazio: begin
+               FButton.Caption:= '';
+             End;
+  end;
+end;
+
+end.
